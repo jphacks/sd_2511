@@ -1,5 +1,5 @@
 import { BleManager } from 'react-native-ble-plx';
-import { decryptAES, decryptRSA, generateRSAKeyPair } from './cryptoUtils';
+import { decryptAES, decryptRSA, generateRSAKeyPair } from '../cryptoUtils';
 
 const manager = new BleManager();
 const { publicKey, privateKey } = generateRSAKeyPair();

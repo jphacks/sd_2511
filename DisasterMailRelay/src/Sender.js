@@ -1,5 +1,5 @@
 import { BleManager } from 'react-native-ble-plx';
-import { generateAESKey, encryptAES, encryptRSA } from './cryptoUtils';
+import { generateAESKey, encryptAES, encryptRSA } from '../cryptoUtils';
 
 const manager = new BleManager();
 const relayUUID = '中継機BのUUID';

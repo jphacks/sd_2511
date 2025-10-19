@@ -1,6 +1,6 @@
 # アプリ名　: モールスライト
-
-
+https://youtube.com/shorts/kCv7JNVGsRs
+https://www.youtube.com/shorts/1EIw-Kz3Mu4
 # 背景
 
 - 電波が弱い場所や、静かにしなければいけない場所でも、短いメッセージをやり取りできたら便利です。

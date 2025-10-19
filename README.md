@@ -1,6 +1,8 @@
 # アプリ名　: モールスライト
-https://youtube.com/shorts/kCv7JNVGsRs
-https://www.youtube.com/shorts/1EIw-Kz3Mu4
+
+[!['モールスライト']('<img width="371" height="810" alt="SOSを スマホのフラッシュで" src="https://github.com/user-attachments/assets/e408398e-d5b0-4a72-96c8-1a882a263f91" />
+')]('https://youtube.com/shorts/JNmlek-WgBo')
+
 # 背景
 
 - 電波が弱い場所や、静かにしなければいけない場所でも、短いメッセージをやり取りできたら便利です。

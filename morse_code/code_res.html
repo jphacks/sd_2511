@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>動画フラッシュ → モールス自動デコード（ブラウザ）</title>
+<style>
+:root{--bg:#0b1020;--panel:#111936;--ink:#eaf0ff;--muted:#9fb0da;--accent:#79b4ff;--ok:#23d3a6;--warn:#ffae42;--bad:#ff6b6b}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(180deg,#0b1020,#0a1029);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"}
+.wrap{max-width:1100px;margin:0 auto;padding:22px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+header h1{font-size:clamp(20px,3.2vw,28px);margin:0;font-weight:800;color:#cfe0ff}
+.card{background:linear-gradient(180deg,#101836,#0b1230);border:1px solid #1b2a63;border-radius:16px;padding:14px;box-shadow:0 14px 50px rgba(0,0,0,.35)}
+.grid{display:grid;gap:14px}
+@media(min-width:980px){.grid{grid-template-columns:1.05fr .95fr}}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{appearance:none;border:1px solid #2b3d7e;background:#0f173a;color:var(--ink);padding:10px 14px;border-radius:12px;font-weight:700;letter-spacing:.2px;font-size:15px;cursor:pointer;transition:all .15s ease}
+.btn:hover{transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn.ok{border-color:#1f8a72;background:linear-gradient(180deg,#133c35,#0f322c)}
+.btn.warn{border-color:#8a6d1f;background:linear-gradient(180deg,#3c2f13,#32280f)}
+.btn.ghost{background:transparent}
+.input{border:1px solid #2b3d7e;background:#0f173a;color:var(--ink);border-radius:10px;padding:8px 10px}
+.small{font-size:12px;color:var(--muted)}
+.kbd{border:1px solid #3a4ea3;background:#101a46;border-radius:8px;padding:1px 6px}
+.panel{border:1px solid #233172;background:#0c1435;border-radius:12px;padding:10px}
+h2{margin:6px 0 8px;font-size:18px;color:#cfe0ff}
+label{font-size:13px;color:var(--muted)}
+.badge{display:inline-flex;align-items:center;gap:6px;border:1px solid #2a3b7c;background:#0f173a;border-radius:999px;padding:6px 10px;font-size:12px}
+code.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.out{min-height:68px;white-space:pre-wrap;word-wrap:anywhere}
+canvas, video{max-width:100%;border-radius:12px}
+.range{accent-color:#79b4ff}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th,.tbl td{border-bottom:1px solid #1a275a;padding:6px 8px;text-align:left}
+.tbl th{color:var(--muted)}
+.pill{display:inline-block;margin-right:8px;padding:2px 8px;border-radius:999px;background:#142055;border:1px solid #2a3a7a;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>動画フラッシュ → モールス自動デコード（ブラウザだけで完結）</h1>
+    <span class="badge">オフライン可</span>
+  </header>
+
+  <div class="grid">
+    <section class="card">
+      <h2>1) 動画を読み込む</h2>
+      <div class="row" style="margin-bottom:8px">
+        <input id="file" class="input" type="file" accept="video/*" />
+        <button class="btn" id="btnPlay">再生＆解析</button>
+        <button class="btn ghost" id="btnStop">停止</button>
+        <span class="small">点滅しているライトが映る動画（スマホのフラッシュ等）を選択してください。</span>
+      </div>
+      <video id="video" controls playsinline style="width:100%;background:#000;border:1px solid #1b2a63"></video>
+      <div class="row" style="margin-top:8px">
+        <div class="panel" style="flex:1">
+          <label>明るさ抽出の領域（ROI）</label>
+          <div class="small">中央付近の四角から平均輝度をサンプリングします。ドラッグで移動可。</div>
+          <canvas id="canvas" width="640" height="360"></canvas>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:8px">
+        <div class="panel" style="flex:1">
+          <label>検出パラメータ</label>
+          <div class="row" style="gap:14px;margin-top:6px">
+            <div>
+              <div class="small">平滑化(移動平均) window: <span id="smSpan">5</span> サンプル</div>
+              <input id="smoothing" type="range" min="1" max="21" step="2" value="5" class="range" />
+            </div>
+            <div>
+              <div class="small">長押し/短押しの基準(自動推定後の倍率): <span id="kSpan">1.5×</span></div>
+              <input id="kThresh" type="range" min="1.2" max="2.2" step="0.1" value="1.5" class="range" />
+            </div>
+            <div>
+              <div class="small">時間スケール補正(解析fps比): <span id="fpsSpan">1.0</span>×</div>
+              <input id="fpsScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0" class="range" />
+            </div>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <button class="btn ok" id="btnAuto">自動キャリブレーション</button>
+            <button class="btn" id="btnRebuild">再デコード</button>
+            <span class="small">まず「再生＆解析」→「自動キャリブレーション」で点(・)/線(－)と区切り長を推定します。</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>2) 解析と結果</h2>
+      <div class="panel">
+        <label>輝度タイムライン</label>
+        <canvas id="plot" width="640" height="160"></canvas>
+        <div class="small">グラフは輝度(0-255)の推移。上向きが明るい＝ライト点灯。</div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <label>検出された符号列</label>
+        <div id="morseOut" class="out mono"></div>
+        <div class="small">「・」= dot / 「－」= dash / 文字区切り=空白 / 単語区切り="/"</div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <label>デコード結果（テキスト）</label>
+        <div id="decodedText" class="out" style="font-size:20px"></div>
+        <div class="row" style="margin-top:6px">
+          <button class="btn" id="copyText">コピー</button>
+          <button class="btn ghost" id="copyMorse">Morseコピー</button>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <label>セグメント一覧</label>
+        <table class="tbl" id="segTable"></table>
+      </div>
+    </section>
+  </div>
+
+  <div class="small" style="margin-top:10px">
+    コツ: 画面内のライトが一番大きく写る領域にROI(四角)を合わせてください。fpsや露出の違いで点・線の比が崩れる場合は「自動キャリブレーション」を押してください。
+  </div>
+</div>
+
+<script>
+// ===== 国際モールス（英字と数字） =====
+const MORSE_TO_CHAR = {
+  ".-":"A","-...":"B","-.-.":"C","-..":"D",".":"E","..-.":"F","--.":"G","....":"H","..":"I",".---":"J","-.-":"K",".-..":"L","--":"M","-.":"N","---":"O",".--.":"P","--.-":"Q",".-.":"R","...":"S","-":"T","..-":"U","...-":"V",".--":"W","-..-":"X","-.--":"Y","--..":"Z",
+  ".----":"1","..---":"2","...--":"3","....-":"4",".....":"5","-....":"6","--...":"7","---..":"8","----.":"9","-----":"0",
+  ".-.-.-":".", "--..--":",", "..--..":"?", ".----.":"'", "-.-.--":"!",
+  "-..-.":"/", "-.--.":"(", "-.--.-":")", ".-...":"&", "---...":":",
+  "-.-.-.":";", "-...-":"=", ".-.-.":"+", "-....-":"-", "..--_-":"_",
+  ".-..-.":"\"", "...-..-":"$", ".--.-.":"@"
+};
+
+// ===== UI 要素 =====
+const fileEl = document.getElementById('file');
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const plot = document.getElementById('plot');
+const ptx = plot.getContext('2d');
+const btnPlay = document.getElementById('btnPlay');
+const btnStop = document.getElementById('btnStop');
+const smoothingEl = document.getElementById('smoothing');
+const kThreshEl = document.getElementById('kThresh');
+const fpsScaleEl = document.getElementById('fpsScale');
+const smSpan = document.getElementById('smSpan');
+const kSpan = document.getElementById('kSpan');
+const fpsSpan = document.getElementById('fpsSpan');
+const btnAuto = document.getElementById('btnAuto');
+const btnRebuild = document.getElementById('btnRebuild');
+const morseOut = document.getElementById('morseOut');
+const decodedText = document.getElementById('decodedText');
+const segTable = document.getElementById('segTable');
+const copyText = document.getElementById('copyText');
+const copyMorse = document.getElementById('copyMorse');
+
+// ===== ROI（ドラッグで移動） =====
+let roi = {x: 0.35, y: 0.35, w: 0.3, h: 0.3}; // 画面比率
+let dragging=false, dragOff={x:0,y:0};
+canvas.addEventListener('mousedown', (e)=>{const r=canvas.getBoundingClientRect();const mx=e.clientX-r.left, my=e.clientY-r.top;const {rx,ry,rw,rh}=absRoi(); if(mx>rx&&mx<rx+rw&&my>ry&&my<ry+rh){dragging=true; dragOff.x=mx-rx; dragOff.y=my-ry;}});
+window.addEventListener('mouseup', ()=>dragging=false);
+window.addEventListener('mousemove', (e)=>{ if(!dragging) return; const r=canvas.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top; const rx=mx-dragOff.x, ry=my-dragOff.y; const rw=absRoi().rw, rh=absRoi().rh; roi.x = Math.max(0, Math.min(1 - rw/canvas.width, rx/canvas.width)); roi.y = Math.max(0, Math.min(1 - rh/canvas.height, ry/canvas.height)); drawFrame(); });
+function absRoi(){ return {rx: roi.x*canvas.width, ry: roi.y*canvas.height, rw: roi.w*canvas.width, rh: roi.h*canvas.height}; }
+
+// ===== データ保持 =====
+let samples=[]; // {t, v} 輝度(0-255)
+let segments=[]; // {type:'on'|'off', t, dt}
+let unitT=0; // 推定ドット長(秒)
+let kMult=1.5; // ドット/ダッシュ境界倍率
+let playing=false, rafId=null, lastT=0;
+
+function drawFrame(){
+  if(video.videoWidth===0) return;
+  const W=canvas.width, H=canvas.height;
+  // キャンバスにフレーム描画
+  ctx.drawImage(video, 0, 0, W, H);
+  // ROI 表示
+  const {rx,ry,rw,rh}=absRoi();
+  ctx.strokeStyle = '#79b4ff'; ctx.lineWidth=2; ctx.strokeRect(rx,ry,rw,rh);
+  ctx.fillStyle = 'rgba(121,180,255,0.12)'; ctx.fillRect(rx,ry,rw,rh);
+}
+
+function sampleBrightness(){
+  const {rx,ry,rw,rh}=absRoi();
+  const img = ctx.getImageData(rx,ry,rw,rh).data;
+  let sum=0; const n = img.length/4;
+  for(let i=0;i<img.length;i+=4){
+    const r=img[i], g=img[i+1], b=img[i+2];
+    // 輝度Y（Rec.601）
+    const y = 0.299*r + 0.587*g + 0.114*b;
+    sum+=y;
+  }
+  return sum/n; // 0-255
+}
+
+function plotSeries(){
+  const W=plot.width, H=plot.height;
+  ptx.clearRect(0,0,W,H);
+  ptx.strokeStyle='#1e2f73'; ptx.lineWidth=1; // grid
+  for(let i=0;i<=4;i++){ const y=H*i/4; ptx.beginPath(); ptx.moveTo(0,y); ptx.lineTo(W,y); ptx.stroke(); }
+  if(samples.length<2) return;
+  const t0 = samples[0].t, t1 = samples[samples.length-1].t;
+  const min=0, max=255;
+  ptx.strokeStyle='#79b4ff'; ptx.lineWidth=2; ptx.beginPath();
+  for(const s of samples){
+    const x = (s.t - t0) / (t1 - t0) * W;
+    const y = H - (s.v - min)/(max-min)*H;
+    ptx.lineTo(x,y);
+  }
+  ptx.stroke();
+}
+
+function smooth(data, win){
+  if(win<=1) return data.slice();
+  const out=[]; const k=Math.floor(win/2);
+  for(let i=0;i<data.length;i++){
+    let s=0, c=0; for(let j=i-k;j<=i+k;j++){ if(j>=0&&j<data.length){ s+=data[j].v; c++; } }
+    out.push({t:data[i].t, v:s/c});
+  }
+  return out;
+}
+
+function otsuThreshold(vals){
+  // 0-255 の整数ヒストグラムで大まかに闘値を出す
+  const hist=new Array(256).fill(0);
+  for(const v of vals){ const i=Math.max(0,Math.min(255,Math.round(v))); hist[i]++; }
+  const total=vals.length; let sum=0; for(let i=0;i<256;i++) sum+=i*hist[i];
+  let sumB=0, wB=0, wF=0, mB=0, mF=0, maxVar=0, th=127;
+  for(let i=0;i<256;i++){
+    wB += hist[i]; if(wB===0) continue; wF = total - wB; if(wF===0) break;
+    sumB += i*hist[i]; mB = sumB / wB; mF = (sum - sumB) / wF; const varBetween = wB*wF*(mB-mF)*(mB-mF);
+    if(varBetween>maxVar){ maxVar=varBetween; th=i; }
+  }
+  return th;
+}
+
+function binarize(sm){
+  const th = otsuThreshold(sm.map(s=>s.v));
+  const out = sm.map(s=>({t:s.t, on: s.v >= th}));
+  return {binary: out, threshold: th};
+}
+
+function runLength(binary){
+  if(binary.length===0) return [];
+  const seg=[]; let cur=binary[0].on, t0=binary[0].t;
+  for(let i=1;i<binary.length;i++){
+    if(binary[i].on!==cur){ const t1=binary[i].t; seg.push({type: cur?'on':'off', t:t0, dt: t1-t0}); cur=binary[i].on; t0=t1; }
+  }
+  const last = binary[binary.length-1]; seg.push({type: cur?'on':'off', t:t0, dt: last.t - t0});
+  return seg;
+}
+
+function kmeans1d(values, k){
+  // 簡易K-means（初期値: 分位点）
+  const arr = values.slice().sort((a,b)=>a-b);
+  const cent = new Array(k).fill(0).map((_,i)=> arr[Math.floor((i+1)*arr.length/(k+1))] );
+  let assign=new Array(arr.length).fill(0);
+  for(let it=0; it<20; it++){
+    // assign
+    for(let i=0;i<arr.length;i++){
+      let bi=0, bd=Infinity; for(let c=0;c<k;c++){ const d=Math.abs(arr[i]-cent[c]); if(d<bd){bd=d;bi=c;} }
+      assign[i]=bi;
+    }
+    // recompute
+    let changed=false;
+    for(let c=0;c<k;c++){
+      const cluster = arr.filter((_,i)=>assign[i]===c);
+      if(cluster.length){ const mean = cluster.reduce((a,b)=>a+b,0)/cluster.length; if(Math.abs(mean-cent[c])>1e-6){cent[c]=mean; changed=true;} }
+    }
+    if(!changed) break;
+  }
+  return {centroids: cent.sort((a,b)=>a-b)};
+}
+
+function classifySegments(seg){
+  // dot/dash 推定（on セグメントのみで2クラスタ）
+  const ons = seg.filter(s=>s.type==='on').map(s=>s.dt);
+  if(ons.length<2){ unitT=0; return {morse:"", tokens:[]}; }
+  const {centroids} = kmeans1d(ons, 2);
+  const dot = centroids[0]; const dash = centroids[1];
+  unitT = dot; // dot 長を単位と定義
+  const k = parseFloat(kThreshEl.value || '1.5');
+
+  // ISO 1869慣習: gap ~ 1T(要素間) / 3T(文字間) / 7T(単語間)
+  const intraMax = 1.5*unitT;
+  const letterMax = 3.5*unitT;
+  const wordMin = 6*unitT; // >~7T 目安
+
+  const tokens=[]; // '.-' or '/' or ' ' boundaries
+  let cur="";
+  for(const s of seg){
+    if(s.type==='on'){
+      cur += (s.dt < k*unitT ? '.' : '-');
+    } else {
+      if(s.dt < intraMax){
+        // same letter
+      } else if(s.dt < letterMax){
+        if(cur){ tokens.push(cur); cur=""; }
+      } else if(s.dt >= wordMin){
+        if(cur){ tokens.push(cur); cur=""; }
+        tokens.push('/');
+      } else {
+        if(cur){ tokens.push(cur); cur=""; }
+      }
+    }
+  }
+  if(cur) tokens.push(cur);
+  const morse = tokens.map(t=> t==='/'?'/': t.replaceAll('.', '・').replaceAll('-', '－')).join(' ');
+  // デコード
+  let out="";
+  for(const t of tokens){ if(t==='/'){ out+=' '; } else { out += (MORSE_TO_CHAR[t] || '□'); } }
+  return {morse, tokens, out, dot, dash};
+}
+
+function rebuild(){
+  // 平滑化＆2値化
+  const win = parseInt(smoothingEl.value||'5'); smSpan.textContent=win;
+  const sm = smooth(samples, win);
+  const {binary, threshold} = binarize(sm);
+  // セグメント化
+  segments = runLength(binary);
+  // 分類
+  const {morse, tokens, out, dot, dash} = classifySegments(segments);
+  morseOut.textContent = morse;
+  decodedText.textContent = out || '';
+  // 表
+  let html = '<tr><th>#</th><th>種別</th><th>開始[s]</th><th>長さ[ms]</th></tr>';
+  segments.forEach((s,i)=>{ html += `<tr><td>${i+1}</td><td>${s.type}</td><td>${s.t.toFixed(3)}</td><td>${(s.dt*1000).toFixed(1)}</td></tr>`; });
+  segTable.innerHTML = html;
+  // プロット再描画
+  plotSeries();
+}
+
+btnRebuild.addEventListener('click', rebuild);
+
+btnAuto.addEventListener('click', ()=>{
+  rebuild();
+  // すでに classify 内で unitT を更新している。UI表示更新だけ。
+  kSpan.textContent = `${parseFloat(kThreshEl.value).toFixed(1)}×`;
+});
+
+smoothingEl.addEventListener('input', ()=>{ smSpan.textContent = smoothingEl.value; rebuild(); });
+kThreshEl.addEventListener('input', ()=>{ kSpan.textContent = `${parseFloat(kThreshEl.value).toFixed(1)}×`; rebuild(); });
+fpsScaleEl.addEventListener('input', ()=>{ fpsSpan.textContent = `${parseFloat(fpsScaleEl.value).toFixed(1)}`; });
+
+copyText.addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText(decodedText.textContent||''); }catch{ alert('コピーに失敗'); } });
+copyMorse.addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText((morseOut.textContent||'').replaceAll('・','.' ).replaceAll('－','-' )); }catch{ alert('コピーに失敗'); } });
+
+// ===== 解析ループ =====
+function step(){
+  if(!playing) return;
+  drawFrame();
+  const t = video.currentTime * parseFloat(fpsScaleEl.value||'1');
+  if(t!==lastT){
+    const v = sampleBrightness();
+    samples.push({t, v});
+    lastT = t;
+  }
+  plotSeries();
+  rafId = requestAnimationFrame(step);
+}
+
+btnPlay.addEventListener('click', ()=>{
+  if(!video.src){ alert('先に動画を選択してください'); return; }
+  samples=[]; segments=[]; decodedText.textContent=''; morseOut.textContent=''; segTable.innerHTML='';
+  playing = true; video.play(); step();
+});
+btnStop.addEventListener('click', ()=>{ playing=false; video.pause(); if(rafId) cancelAnimationFrame(rafId); rebuild(); });
+
+fileEl.addEventListener('change', ()=>{
+  const f = fileEl.files[0]; if(!f) return;
+  const url = URL.createObjectURL(f); video.src = url; video.onloadedmetadata = ()=>{
+    // キャンバスサイズを動画に合わせる
+    const ratio = video.videoWidth / video.videoHeight;
+    canvas.width = 640; canvas.height = Math.round(640/ratio);
+    plot.width = 640; plot.height = 160;
+    drawFrame();
+  }
+});
+
+// 初期テキスト
+smSpan.textContent = smoothingEl.value;
+kSpan.textContent = `${parseFloat(kThreshEl.value).toFixed(1)}×`;
+fpsSpan.textContent = fpsScaleEl.value;
+
+</script>
+</body>
+</html>

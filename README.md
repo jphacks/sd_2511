@@ -1,7 +1,6 @@
 # アプリ名　: モールスライト
 
-[!['モールスライト']('https://github.com/user-attachments/assets/e408398e-d5b0-4a72-96c8-1a882a263f91')]('https://youtube.com/shorts/JNmlek-WgBo?feature=share')
-
+[!['モールスライト']('https://github.com/user-attachments/assets/ec65c12f-d65e-4559-90c4-a8a2e7e4beea')]('https://youtube.com/shorts/ZULTfhgBdes')
 # 背景
 
 - 電波が弱い場所や、静かにしなければいけない場所でも、短いメッセージをやり取りできたら便利です。
@@ -54,3 +53,5 @@
 - 明るさの変化から、短い光（ドット）と長い光（ダッシュ）を自動で分けます。
 - 光が消えている時間の長さで、同じ文字の中か、文字の区切りか、単語の区切りかを見分けます。
 - 読み取りの過程を波形や一覧で見える化し、どこで迷っているかを確認できます。
+
+<img width="371" height="810" alt="SOSを スマホのフラッシュで" src="https://github.com/user-attachments/assets/ec65c12f-d65e-4559-90c4-a8a2e7e4beea" />

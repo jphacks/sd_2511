@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang='ja'>
+<head>
+  <meta charset='utf-8' />
+  <meta name='viewport' content='width=device-width, initial-scale=1' />
+  <title>手入力モールス → 文字 変換（ブラウザアプリ）</title>
+  <style>
+    :root {
+      --bg: #0b1020; --panel:#121933; --ink:#e8ecff; --muted:#aab3d1; --accent:#7aa2ff; --accent2:#9ff0d7; --danger:#ff6b6b;
+    }
+    html,body{height:100%}
+    body{margin:0;background:linear-gradient(180deg,#0b1020, #0b1020 20%, #0f1630 100%);color:var(--ink);font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Apple Color Emoji,Segoe UI Emoji,Noto Color Emoji;}
+    .wrap{max-width:980px;margin:0 auto;padding:24px}
+    h1{font-size:clamp(22px,3vw,30px);margin:0 0 8px;font-weight:800;letter-spacing:.2px}
+    .sub{color:var(--muted);margin-bottom:18px}
+    .grid{display:grid;gap:14px}
+    @media(min-width:900px){.grid{grid-template-columns:1.1fr .9fr}}
+    .card{background:linear-gradient(180deg,#121933,#0e1530);border:1px solid #1a2350;border-radius:18px;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .btn{appearance:none;border:1px solid #2a3970;background:#0f1533;color:var(--ink);padding:14px 18px;border-radius:14px;font-weight:700;letter-spacing:.4px;font-size:18px;cursor:pointer;transition:all .15s ease;box-shadow:inset 0 -3px 0 rgba(255,255,255,.03)}
+    .btn:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(0,0,0,.35), inset 0 -3px 0 rgba(255,255,255,.05)}
+    .btn:active{transform:translateY(0)}
+    .btn.big{font-size:22px;padding:18px 22px}
+    .btn.ghost{background:transparent}
+    .btn.accent{border-color:#406bff;background:linear-gradient(180deg,#1a2c63,#142454)}
+    .btn.green{border-color:#2e8067;background:linear-gradient(180deg,#13463d,#0f3a32)}
+    .btn.danger{border-color:#7c2a2a;background:linear-gradient(180deg,#401616,#2a0f0f)}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
+    .kbd{border:1px solid #41508f;background:#131c41;border-radius:8px;padding:2px 6px;font-size:12px}
+    label{font-size:13px;color:var(--muted)}
+    .panel{border:1px solid #22306b;background:linear-gradient(180deg,#0e1533,#0a1128);border-radius:14px;padding:12px}
+    .out{min-height:76px;white-space:pre-wrap;word-wrap:anywhere}
+    .muted{color:var(--muted)}
+    .split{display:grid;grid-template-columns:1fr auto;align-items:center}
+    .tbl{width:100%;border-collapse:collapse;font-size:14px}
+    .tbl th,.tbl td{border-bottom:1px solid #1d264f;padding:6px 8px;text-align:left}
+    .tbl th{color:var(--muted);font-weight:700}
+    .pill{display:inline-flex;align-items:center;gap:8px;border:1px solid #27428f;background:#0e1533;border-radius:999px;padding:6px 10px;font-size:13px}
+    .input{width:100%;padding:12px;border-radius:12px;border:1px solid #26356e;background:#0d1430;color:var(--ink)}
+    .hint{font-size:12px;color:var(--muted)}
+    .chip{font-weight:800;letter-spacing:1.2px}
+  </style>
+</head>
+<body>
+  <div class='wrap'>
+    <h1>手入力モールス → 文字 変換</h1>
+    <div class='sub'>目視したモールス信号を <span class='chip'>・（ドット）</span> と <span class='chip'>－（ダッシュ）</span> で手入力し、<strong>リアルタイムで欧文（A–Z, 0–9, 句読点）にデコード</strong>します。オフライン可・インストール不要。</div>
+
+    <div class='grid'>
+      <!-- 左：操作と出力 -->
+      <section class='card'>
+        <div class='row' style='justify-content:space-between;margin-bottom:8px'>
+          <div class='row'>
+            <span class='pill'>入力方式： <strong id='modeLabel'>ボタン／キー</strong></span>
+          </div>
+          <div class='row'>
+            <button class='btn ghost' id='copyText' title='テキストをコピー'>コピー</button>
+            <button class='btn ghost' id='copyMorse' title='モールス列をコピー'>Morseコピー</button>
+            <button class='btn danger' id='resetAll' title='全消去'>全消去</button>
+          </div>
+        </div>
+
+        <div class='panel' style='margin-bottom:10px'>
+          <label>現在入力中の符号（1文字分）</label>
+          <div id='currentSymbol' class='out mono' aria-live='polite' style='font-size:26px;min-height:40px'></div>
+          <div class='hint'>キー操作: <span class='kbd'>.</span> ドット / <span class='kbd'>-</span> ダッシュ / <span class='kbd'>Space</span> 文字区切り / <span class='kbd'>/</span> 単語区切り / <span class='kbd'>Enter</span> 文字確定 / <span class='kbd'>Backspace</span> 1要素削除</div>
+        </div>
+
+        <div class='panel' style='margin-bottom:10px'>
+          <label>変換結果（テキスト）</label>
+          <div id='decodedText' class='out' style='font-size:22px;line-height:1.5' aria-live='polite'></div>
+        </div>
+
+        <div class='panel'>
+          <label>これまでのモールス入力（可視化）</label>
+          <div id='morseStream' class='out mono muted'></div>
+        </div>
+
+        <div class='row' style='margin-top:12px'>
+          <button id='btnDot' class='btn big accent' aria-label='ドット（・）'><span style='font-size:26px'>・</span></button>
+          <button id='btnDash' class='btn big accent' aria-label='ダッシュ（－）'><span style='font-size:26px'>－</span></button>
+          <button id='btnLetter' class='btn big green' title='文字区切り / Enter'>文字区切り</button>
+          <button id='btnWord' class='btn big' title='単語区切り（スペース）'>単語区切り</button>
+          <button id='btnUndo' class='btn' title='直前のドット/ダッシュ/区切りを取り消す'>1つ戻す</button>
+        </div>
+      </section>
+
+      <!-- 右：まとめて貼り付け・チートシート -->
+      <section class='card'>
+        <div class='split'>
+          <h2 style='margin:4px 0'>一括デコード（貼り付け）</h2>
+          <button class='btn' id='sampleBtn'>サンプルを入れる</button>
+        </div>
+        <p class='muted' style='margin-top:0'>『<span class='mono'>.-</span>』のような符号を<strong>スペースで文字区切り</strong>、『<span class='mono'>/</span>』で<strong>単語区切り</strong>として貼り付けてください。</p>
+        <textarea id='bulkInput' class='input mono' rows='5' placeholder='例: .... . .-.. .-.. --- / .-- --- .-. .-.. -..'></textarea>
+        <div class='row' style='margin-top:8px'>
+          <button class='btn green' id='bulkDecode'>変換する</button>
+          <button class='btn ghost' id='bulkClear'>クリア</button>
+        </div>
+
+        <h2 style='margin:16px 0 6px'>モールス対応表（国際/欧文）</h2>
+        <div class='panel' style='max-height:300px;overflow:auto'>
+          <table class='tbl' id='cheatsheet'></table>
+          <div class='hint'>※ 和文（和文モールス/Wabun）は未対応。必要なら後で拡張できます。</div>
+        </div>
+      </section>
+    </div>
+
+    <p class='muted' style='margin-top:12px'>データはブラウザのローカルに一時保存され、ページ再読み込みでも復元されます（共有はされません）。</p>
+  </div>
+
+<script>
+// --- 国際モールス（欧文）マップ ---
+const MORSE_TO_CHAR = {
+  // Letters
+  '.-':'A','-...':'B','-.-.':'C','-..':'D','.':'E','..-.':'F',
+  '--.':'G','....':'H','..':'I','.---':'J','-.-':'K','.-..':'L',
+  '--':'M','-.':'N','---':'O','.--.':'P','--.-':'Q','.-.':'R',
+  '...':'S','-':'T','..-':'U','...-':'V','.--':'W','-..-':'X',
+  '-.--':'Y','--..':'Z',
+  // Numbers
+  '.----':'1','..---':'2','...--':'3','....-':'4','.....':'5',
+  '-....':'6','--...':'7','---..':'8','----.':'9','-----':'0',
+  // Punctuation (common)
+  '.-.-.-':'.', '--..--':',', '..--..':'?', '.----.':'\'', '-.-.--':'!',
+  '-..-.':'/', '-.--.':'(', '-.--.-':')', '.-...':'&', '---...':':',
+  '-.-.-.':';', '-...-':'=', '.-.-.':'+', '-....-':'-', '..--_-':'_',
+  '.-..-.':'"', '...-..-':'$', '.--.-.':'@'
+};
+const CHAR_TO_MORSE = Object.fromEntries(Object.entries(MORSE_TO_CHAR).map(([m,c])=>[c,m]));
+
+// --- 状態 ---
+let cur = '';              // 1文字分の . -
+let morseTokens = [];       // 文字区切りでトークン化された morse (' .-', '/' など)
+let decoded = '';           // 出力文字列
+
+// --- 要素参照 ---
+const elCurrent = document.getElementById('currentSymbol');
+const elDecoded = document.getElementById('decodedText');
+const elStream  = document.getElementById('morseStream');
+const btnDot    = document.getElementById('btnDot');
+const btnDash   = document.getElementById('btnDash');
+const btnLetter = document.getElementById('btnLetter');
+const btnWord   = document.getElementById('btnWord');
+const btnUndo   = document.getElementById('btnUndo');
+const copyText  = document.getElementById('copyText');
+const copyMorse = document.getElementById('copyMorse');
+const resetAll  = document.getElementById('resetAll');
+const bulkInput = document.getElementById('bulkInput');
+const bulkDecode= document.getElementById('bulkDecode');
+const bulkClear = document.getElementById('bulkClear');
+const cheatsheet= document.getElementById('cheatsheet');
+const sampleBtn = document.getElementById('sampleBtn');
+
+// --- 画面更新 ---
+function render(){
+  elCurrent.textContent = cur.replaceAll('.', '・').replaceAll('-', '－');
+  elDecoded.textContent = decoded;
+  const visual = morseTokens.map(t => t === '/' ? '/' : t).join(' ')
+    .replaceAll('.', '・').replaceAll('-', '－');
+  elStream.textContent = visual;
+  save();
+}
+
+function save(){
+  localStorage.setItem('morse_manual_state', JSON.stringify({cur, morseTokens, decoded}));
+}
+function load(){
+  const raw = localStorage.getItem('morse_manual_state');
+  if(!raw) return;
+  try{ const s = JSON.parse(raw); cur=s.cur||''; morseTokens=s.morseTokens||[]; decoded=s.decoded||''; }catch{}
+}
+
+// --- 入力操作 ---
+function pushDot(){ cur += '.'; render(); }
+function pushDash(){ cur += '-'; render(); }
+function commitLetter(){
+  if(cur.length){
+    const c = MORSE_TO_CHAR[cur] || '□';
+    decoded += c;
+    morseTokens.push(cur);
+    cur = '';
+  }
+  render();
+}
+function wordBoundary(){
+  commitLetter();
+  decoded += ' ';
+  morseTokens.push('/');
+  render();
+}
+function undo(){
+  if(cur.length){ cur = cur.slice(0,-1); render(); return; }
+  const last = morseTokens.pop();
+  if(last === '/'){
+    decoded = decoded.replace(/\s+$/,'');
+  } else if(typeof last === 'string'){
+    decoded = decoded.slice(0,-1);
+  }
+  render();
+}
+function reset(){ cur=''; morseTokens=[]; decoded=''; render(); }
+
+// --- クリップボード ---
+async function copy(text){
+  try{ await navigator.clipboard.writeText(text); }catch{ alert('コピーできませんでした'); }
+}
+
+// --- 一括デコード ---
+function decodeBulk(str){
+  // 受け付ける表記： . と -、文字区切りは空白/改行、単語は /
+  // 日本語の『・』『ー』でも許可
+  const norm = str
+    .replace(/[・･]/g,'.')
+    .replace(/[－ー―−‐–—]/g,'-')
+    .replace(/[\n\r\t]+/g,' ')
+    .replace(/ +/g,' ')
+    .trim();
+  if(!norm){ return {text:'', tokens:[]}; }
+  const tokens = norm.split(' ');
+  let out = '';
+  for(const t of tokens){
+    if(t === '/') { out += ' '; continue; }
+    const c = MORSE_TO_CHAR[t] || '□';
+    out += c;
+  }
+  return {text: out, tokens};
+}
+
+// --- チートシート生成 ---
+function buildCheat(){
+  const entries = Object.entries(MORSE_TO_CHAR).map(([m,c])=>({m,c}))
+    .filter(x => /[A-Z0-9]/.test(x.c));
+  entries.sort((a,b)=>a.c.localeCompare(b.c));
+  let html = '<tr><th>文字</th><th>Morse</th></tr>';
+  for(const {m,c} of entries){
+    const s = m.replaceAll('.', '・').replaceAll('-', '－');
+    html += `<tr><td><strong>${c}</strong></td><td class='mono'>${s}</td></tr>`;
+  }
+  cheatsheet.innerHTML = html;
+}
+
+// --- 初期化 ---
+load();
+render();
+buildCheat();
+
+// ボタンとキー
+btnDot.addEventListener('click', ()=>{ pushDot(); });
+btnDash.addEventListener('click', ()=>{ pushDash(); });
+btnLetter.addEventListener('click', ()=>{ commitLetter(); });
+btnWord.addEventListener('click', ()=>{ wordBoundary(); });
+btnUndo.addEventListener('click', ()=>{ undo(); });
+copyText.addEventListener('click', ()=> copy(decoded));
+copyMorse.addEventListener('click', ()=> copy(morseTokens.join(' ')) );
+resetAll.addEventListener('click', ()=>{ if(confirm('すべて消去しますか？')) reset(); });
+
+bulkDecode.addEventListener('click', ()=>{
+  const {text,tokens} = decodeBulk(bulkInput.value);
+  cur = ''; morseTokens = tokens; decoded = text; render();
+});
+bulkClear.addEventListener('click', ()=>{ bulkInput.value=''; });
+
+sampleBtn.addEventListener('click', ()=>{
+  bulkInput.value = '.... . .-.. .-.. --- / .-- --- .-. .-.. -..';
+});
+
+window.addEventListener('keydown', (e)=>{
+  const tag = (e.target && (e.target.tagName||'')).toLowerCase();
+  if(tag === 'textarea' || tag === 'input') return; // フォームに影響しない
+  if(e.key === '.') { e.preventDefault(); pushDot(); }
+  else if(e.key === '-') { e.preventDefault(); pushDash(); }
+  else if(e.key === ' '){ e.preventDefault(); commitLetter(); }
+  else if(e.key === '/'){ e.preventDefault(); wordBoundary(); }
+  else if(e.key === 'Enter'){ e.preventDefault(); commitLetter(); }
+  else if(e.key === 'Backspace'){ e.preventDefault(); undo(); }
+});
+
+
+</script>
+</body>
+</html>

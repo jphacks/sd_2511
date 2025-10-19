@@ -1,0 +1,33 @@
+// android/build.gradle
+buildscript {
+    ext {
+        buildToolsVersion = "34.0.0"
+        minSdkVersion = 23 // この行は app/build.gradle で上書きされるため、そのままでも影響は少ないですが、本来は一元管理が望ましいです。
+        compileSdkVersion = 34
+        targetSdkVersion = 34
+        kotlinVersion = "2.1.0" // ★ Kotlinのバージョンを2.1.0に更新
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath('com.android.tools.build:gradle:8.13.0')
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://www.jitpack.io' }
+        maven { url "$rootDir/../node_modules/react-native/android" }
+        maven { url "$rootDir/../node_modules" }
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
+

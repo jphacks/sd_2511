@@ -1,7 +1,6 @@
 # アプリ名　: モールスライト
 
-[!['モールスライト']('<img width="371" height="810" alt="SOSを スマホのフラッシュで" src="https://github.com/user-attachments/assets/e408398e-d5b0-4a72-96c8-1a882a263f91" />
-')]('https://youtube.com/shorts/JNmlek-WgBo')
+[!['モールスライト']('https://github.com/user-attachments/assets/e408398e-d5b0-4a72-96c8-1a882a263f91')]('https://youtube.com/shorts/JNmlek-WgBo')
 
 # 背景
 
